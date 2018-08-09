@@ -523,30 +523,11 @@ void Mesh::rotation(const float *axis, float theta, float *v)
 			v[i] += (P[i * 3 + j] + (I[i * 3 + j] - P[i * 3 + j]) * c + Q[i * 3 + j] * s) * fv[j];
 }
 
-void Mesh::openFile(const char *filename)
+void Mesh::setMesh(const float *vertex, const int *face, const float *normal, int nVertex, int nFace, int nNormal, bool hasNormal)
 {
-	ifstream fin(filename);
-	//cout << "Filename: " << filename << endl;
-	if(fin.fail())
-	{
-		cout << "Failure to open " << filename << endl;
-		return;
-	}
-	fin.close();
-
-	const char *format = &filename[strlen(filename) - 3];
-	MeshIO *mesh;
-	if (!strcmp(format, "obj")) mesh = new MNIObjIO(filename);
-	else if (!strcmp(format, "vtk")) mesh = new VtkIO(filename);
-	else
-	{
-		cout << "Not supoorted format!" << endl;
-		return;
-	}
-
-	m_nVertex = mesh->nVertex();
-	m_nFace = mesh->nFace();
-	m_nNormal = mesh->nNormal();
+	m_nVertex = nVertex;
+	m_nFace = nFace;
+	m_nNormal = (hasNormal) ? nNormal: nVertex;
 
 	//cout << "# of vertices: " << m_nVertex << endl;
 	//cout << "# of faces: " << m_nFace << endl;
@@ -562,23 +543,23 @@ void Mesh::openFile(const char *filename)
 
 	for (int i = 0; i < m_nVertex; i++) 
 	{
-		const float *v = mesh->vertex(i);
+		const float *v = &vertex[i * 3];
 		m_vertex[i]->setVertex(v);
 	}
-	if (mesh->hasNormal())
+	if (hasNormal)
 	{
 		for (int i = 0; i < m_nNormal; i++) 
 		{
-			const float *v = mesh->normal(i);
+			const float *v = &normal[i * 3];
 			m_normal[i]->setNormal(v);
 		}
 	}
 	for (int i = 0; i < m_nFace; i++) 
 	{
-		const int *idx = mesh->face(i);
+		const int *idx = (hasNormal) ? &face[i * 6]: &face[i * 3];
 		const Vertex *v[3];
 		const Normal *n[3];
-		if (mesh->hasNormal())
+		if (hasNormal)
 		{
 			v[0] = m_vertex[idx[0]]; v[1] = m_vertex[idx[1]]; v[2] = m_vertex[idx[2]];
 			n[0] = m_normal[idx[3]]; n[1] = m_normal[idx[4]]; n[2] = m_normal[idx[5]];
@@ -602,9 +583,33 @@ void Mesh::openFile(const char *filename)
 	
 	for (int i = 0; i < m_nNormal; i++) m_normal[i]->normalize();
 
-	delete mesh;
-
 	connectivity();
+}
+
+void Mesh::openFile(const char *filename)
+{
+	ifstream fin(filename);
+	//cout << "Filename: " << filename << endl;
+	if(fin.fail())
+	{
+		cout << "Failure to open " << filename << endl;
+		return;
+	}
+	fin.close();
+
+	const char *format = &filename[strlen(filename) - 3];
+	MeshIO *mesh;
+	if (!strcmp(format, "obj")) mesh = new MNIObjIO(filename);
+	else if (!strcmp(format, "vtk")) mesh = new VtkIO(filename);
+	else
+	{
+		cout << "Not supported format!" << endl;
+		return;
+	}
+	
+	setMesh(mesh->vertex(0), mesh->face(0), mesh->normal(0), mesh->nVertex(), mesh->nFace(), mesh->nNormal(), mesh->hasNormal());
+
+	delete mesh;
 }
 
 void Mesh::updateNormal(void)
@@ -639,6 +644,32 @@ void Mesh::saveFile(const char *filename, const char *format, bool normal)
 		cout << "Not supoorted format!" << endl;
 		return;
 	}
+}
+
+void Mesh::unit(void)
+{
+	centering();
+
+	float minx = FLT_MAX, miny = FLT_MAX, minz = FLT_MAX;
+	float maxx = -FLT_MAX, maxy = -FLT_MAX, maxz = -FLT_MAX;
+	for (int n = 0; n < m_nVertex; n++)
+	{
+		if (minx > m_vertex[n]->fv()[0]) minx = m_vertex[n]->fv()[0];
+		if (maxx < m_vertex[n]->fv()[0]) maxx = m_vertex[n]->fv()[0];
+		if (miny > m_vertex[n]->fv()[1]) miny = m_vertex[n]->fv()[1];
+		if (maxy < m_vertex[n]->fv()[1]) maxy = m_vertex[n]->fv()[1];
+		if (minz > m_vertex[n]->fv()[2]) minz = m_vertex[n]->fv()[2];
+		if (maxz < m_vertex[n]->fv()[2]) maxz = m_vertex[n]->fv()[2];
+	}
+	float lenx = 1 / (maxx - minx);
+	float leny = 1 / (maxy - miny);
+	float lenz = 1 / (maxz - minz);
+
+	float factor;
+	factor = (lenx > leny) ? lenx: leny;
+	factor = (factor > lenz) ? factor: lenz;
+
+	scaling(factor);
 }
 
 void Mesh::connectivity(void)
